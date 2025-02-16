@@ -17,3 +17,23 @@ The script runs from the terminal with the following syntax:
 ```
 python graph_analysis.py graph_file.gml --components n --plot [C|N|P] --verify_homophily --verify_balanced_graph --output out_graph_file.gml
 ```
+
+## Arguments:
+
+graph_file.gml: Input file containing the graph
+
+`--components n`: Partition graph into n components
+
+`--plot [C|N|P]`: Choose graph visualization method:
+
+`C`: Clustering coefficient
+
+`N`: Neighborhood overlap (interactive)
+
+`P`: Node attributes
+
+`--verify_homophily`: Test for homophily in the graph
+
+`--verify_balanced_graph`: Check if the graph is balanced
+
+`--output out_graph_file.gml`: Save modified graph to a new file
