@@ -4,6 +4,7 @@ import argparse
 import os
 import math
 import numpy as np
+import pandas 
 
 def betweenness(G, n):
     """
@@ -104,17 +105,58 @@ def plot_no(G):
     Then when the user clicks it plots the original graph.
     """
     pass
+
+def plot_p(G) :
+    """
+
+    """
+    pass 
     
 
 def verify_homophily(G):
     """
-    
+    Verifies homophily in a graph by calculating the proportion of node colors.
+
+    Parameters:
+        G (networkx.Graph): The input graph with node colors.
     """
-    if (): 
-        return False 
-    else: 
-        return True 
+    # Count occurrences of each color
+    color_counts = {"r": 0, "g": 0}
     
+    for node in G.nodes:
+        color = G.nodes[node].get("color", None)
+        if color in color_counts:
+            color_counts[color] += 1
+
+    total_nodes = sum(color_counts.values())
+    
+    if total_nodes == 0:
+        raise ValueError("Graph has no nodes with color attributes.")
+
+    # Calculate proportions
+    p = color_counts["r"] / total_nodes
+    q = color_counts["g"] / total_nodes
+
+    # Probability of mixed edges
+    mixed_edge_p = 2 * p * q
+
+    print(f"p (red nodes proportion): {p}")
+    print(f"q (green nodes proportion): {q}")
+    print(f"Probability of mixed edges (2pq): {mixed_edge_p}")
+
+    # Find the total number of mixed edges in the network
+    mixed_edges = sum(1 for s, t in G.edges if G.nodes[s]['color'] != G.nodes[t]['color'])
+
+    # Get the percentage of mixed edges in the network
+    percentage_me = mixed_edges/len(G.edges)
+    
+    print(f"Percentage of mixed edges: {percentage_me}")
+
+    if percentage_me <= mixed_edge_p: 
+        return True
+    else: return False
+
+  
 def verify_balance(G):
     """
     

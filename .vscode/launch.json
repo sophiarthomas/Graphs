@@ -10,7 +10,7 @@
       "request": "launch",
       "program": "${file}",
       "console": "integratedTerminal",
-      "args": ["simple_graph.gml", "--plot", "CN"]
+      "args": ["simple_graph.gml", "--plot", "CN", "--verify_homophily"]
     }
   ]
 }
