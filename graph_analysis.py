@@ -164,7 +164,7 @@ def main():
     """Parse command-line arguments and execute graph analysis."""
     parser = argparse.ArgumentParser(description="Graph Analysis")
     parser.add_argument("filename", type=str, help="GML file to read graph data.")
-    parser.add_argument("--component", type=int, help="Partition the graph into n components")
+    parser.add_argument("--components", type=int, help="Partition the graph into n components")
     parser.add_argument("--plot", type=str, help="Plot the graph highlighting [C|N|P]")
     parser.add_argument("--verify_homophily", action="store_true", help="Test for homophily")
     parser.add_argument("--verify_balanced_graph", action="store_true", help="Test for balanced graph")
@@ -178,8 +178,8 @@ def main():
     
     G = nx.read_gml(args.filename)
 
-    if args.component:
-        G = betweenness(G, args.component)
+    if args.components:
+        G = betweenness(G, args.components)
 
     if args.verify_homophily:
         print(f"Homophily: {verify_homophily(G)}")
