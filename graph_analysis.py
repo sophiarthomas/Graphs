@@ -134,7 +134,31 @@ def verify_homophily(G):
     return percentage_me <= mixed_edge_p  # Returns True if homophilic
 
 def verify_balanced_graph(G) :
-    pass 
+    """
+    Check if a graph is structurally balanced based on node attributes and edge signs
+    Param: 
+        G (networkx.Graph)
+    Returns: 
+        bool: True if the graph is balanced, false otherwise 
+    """ 
+    cycles = nx.cycle_basis(G)
+
+    for cycle in cycles: 
+        negative_edges= 0
+
+        for i in range(len(cycle)):
+            u, v = cycle[i], cycle[(i+1) % len(cycle)]
+            sign = G.edges.get((u,v), {}).get("sign", G.edges.get((v, u), {}).get("sign", "+"))
+
+            if sign == "-": 
+                negative_edges += 1
+
+        if negative_edges % 2 == 1:   
+            print(f"Unbalanced Graph: {cycle} with {negative_edges} negative edges")
+            return False
+    
+    print("Graph is structurally balanced!")
+    return True 
 
 def main():
     """Parse command-line arguments and execute graph analysis."""
