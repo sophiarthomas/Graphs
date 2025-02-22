@@ -4,6 +4,7 @@ import argparse
 import os
 import numpy as np
 
+
 def betweenness(G, n):
     """Partition the graph into n components by removing high betweenness edges."""
     components = list(nx.connected_components(G))
@@ -37,13 +38,26 @@ def plot_graph(G, plot_types):
             print(f"Invalid plot option: {char}")
             return
 
+    # Check which argument to apply 
     if valid_args['C']:
         clustering_coeffs = nx.clustering(G)
         plot_clustering(G, clustering_coeffs)
         
     if valid_args['N']:
-        plot_neighborhood_overlap(G)
-        
+        """Plot the graph highlighting neighborhood overlap, interactive BFS on click."""
+        pos = nx.spring_layout(G, seed=42)
+        fig, ax = plt.subplots()
+        bfs_active = False # Track bfs state
+        selected_node = None # Track selected Node 
+
+        state = [pos, fig, ax, bfs_active, selected_node, G]
+
+        ax.clear()
+        plot_neighborhood_overlap(G, state)
+        ax.set_title("Neighborhood Overlap Graph")
+
+        fig.canvas.mpl_connect("button_press_event", lambda event: on_click(event, G,  state)) # Connect event listener
+   
     if valid_args['P']:
         plot_attributes(G)
 
@@ -70,24 +84,17 @@ def plot_clustering(G, clustering_coeffs):
     nx.draw(G, pos, with_labels=True, node_size=[node_sizes[v] for v in G.nodes()], 
             node_color=node_colors, edge_color="gray", font_size=8)
 
-def plot_neighborhood_overlap(G, bfs_root=None):
-    """Plot the graph highlighting neighborhood overlap, interactive BFS on click."""
+def plot_neighborhood_overlap(G, state):
+    """Plot the graph highlighting neighborhood overlap."""
     plt.clf()
-    pos = nx.spring_layout(G, seed=42)
+    state[2].clear()
+    pos = nx.spring_layout(G, seed=42)  # Positioning for the graph
 
-    if bfs_root is None:
-        overlap = compute_neighborhood_overlap(G)
-        edge_colors = [overlap[edge] for edge in G.edges()]
-        nx.draw(G, pos, with_labels=True, edge_color=edge_colors, edge_cmap=plt.cm.plasma, node_color="lightblue")
-        plt.title("Graph Highlighting Neighborhood Overlap")
-    else:
-        bfs_edges = list(nx.bfs_edges(G, bfs_root))
-        bfs_nodes = {bfs_root} | {v for _, v in bfs_edges}
-        nx.draw(G, pos, with_labels=True,
-                node_color=["red" if n in bfs_nodes else "gray" for n in G.nodes()],
-                edge_color=["black" if (u, v) in bfs_edges else "gray" for u, v in G.edges()])
-        plt.title(f"BFS from Node {bfs_root} (Click to Reset)")
-
+    overlap = compute_neighborhood_overlap(G)
+    edge_colors = [overlap[edge] for edge in G.edges()]
+    nx.draw(G, pos, with_labels=True, edge_color=edge_colors, edge_cmap=plt.cm.plasma,
+            node_color="lightblue", font_size=8)
+    plt.title("Graph Highlighting Neighborhood Overlap")
     plt.draw()
 
 def compute_neighborhood_overlap(G):
@@ -100,6 +107,88 @@ def compute_neighborhood_overlap(G):
         union_size = len(neighbors_u | neighbors_v)
         overlap[(u, v)] = intersection_size / union_size if union_size > 0 else 0
     return overlap
+
+
+def on_click(event, G, state):
+    """Mouse click event handler for interactive BFS and graph toggling."""
+    if event.inaxes is None:
+        return
+
+    x_clicked, y_clicked = event.xdata, event.ydata
+    pos = nx.spring_layout(G, seed=42)
+
+     # Find the closest node to the clicked point
+    closest_node = None
+    min_distance = float('inf')  # Initialize with a very large number
+
+    # Check the distance to all nodes to find the closest one
+    if state[3] is True:  # BFS is active, check within BFS subgraph
+        for node in state[5].nodes:
+            x_node, y_node = state[0][node]  # Get the position of the node
+            distance = (x_node - x_clicked) ** 2 + (y_node - y_clicked) ** 2
+            if distance < min_distance:
+                min_distance = distance
+                closest_node = node
+    else:  # No BFS, check within the original graph
+        for node in G.nodes:
+            x_node, y_node = pos[node]  # Get the position of the node
+            distance = (x_node - x_clicked) ** 2 + (y_node - y_clicked) ** 2
+            if distance < min_distance:
+                min_distance = distance
+                closest_node = node
+
+    # Define a threshold to check if the click is near a node
+    distance_threshold = 0.1  
+
+    # If no node is close enough, do nothing
+    if min_distance > distance_threshold:
+        closest_node = None
+        state[3] = True # Simulating active bfs to ensure that the og graph stays 
+
+
+    if state[3]:
+        # If bfs was active, revert to the original graph
+        state[3] = False
+        state[4] = None
+        plot_neighborhood_overlap(G, state)  # Reset to neighborhood overlap graph
+    else:
+        # Perform BFS on the clicked node
+        state[3] = True
+        state[4] = closest_node
+        draw_bfs_graph(G, closest_node, state)
+    print(f"selected: {state[4]} - closest: {closest_node}")
+
+def draw_bfs_graph(G, start_node, state):
+    """Draw the BFS graph starting from a selected node."""
+    plt.clf()
+    state[2].clear()
+    state[2].set_title(f"BFS from {start_node}")
+
+    bfs_nodes, bfs_edges = bfs(G, start_node)
+    levels = {start_node: 0}
+
+    for node in bfs_nodes:
+        level = nx.shortest_path_length(G, source=start_node, target=node)
+        levels[node] = level
+
+    state[5] = G.edge_subgraph(bfs_edges).copy()
+
+    state[0] = nx.spring_layout(state[5], seed=42)
+    new_pos = {node: (state[0][node][0], -levels[node]) for node in levels}
+
+   
+    nx.draw(state[5], pos=new_pos, with_labels=True, node_color="lightblue", edge_color="black", 
+            node_size=500, font_size=8, font_weight="bold", alpha=0.7)
+    plt.draw()
+ 
+
+def bfs(G, start_node):
+    """BFS function to get BFS nodes and edges starting from a node."""
+    bfs_edges = list(nx.bfs_edges(G, source=start_node))
+    bfs_nodes = {start_node} | {v for u, v in bfs_edges}
+    return bfs_nodes, bfs_edges
+
+
 
 def plot_attributes(G):
     """Color nodes based on attributes if assigned, otherwise default gray."""
@@ -160,6 +249,7 @@ def verify_balanced_graph(G) :
     print("Graph is structurally balanced!")
     return True 
 
+
 def main():
     """Parse command-line arguments and execute graph analysis."""
     parser = argparse.ArgumentParser(description="Graph Analysis")
@@ -196,3 +286,25 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+    # def bfs_node_levels(G, root):
+#     """Compute BFS levels for a graph given a root node."""
+#     levels = {}
+#     visited = set()
+#     queue = [(root, 0)]  # (node, level)
+
+#     while queue:
+#         node, level = queue.pop(0)
+#         if node not in visited:
+#             visited.add(node)
+#             if level not in levels:
+#                 levels[level] = []
+#             levels[level].append(node)
+
+#             for neighbor in G.neighbors(node):
+#                 if neighbor not in visited:
+#                     queue.append((neighbor, level + 1))
+    
+#     return levels
