@@ -28,12 +28,12 @@ graph_file.gml: Input file containing the graph
 
 `C`: Clustering coefficient
 
-`N`: Neighborhood overlap (interactive)
+`N`: Neighborhood overlap with interactive BFS feature (Display the BFS starting at the selected node) 
 
-`P`: Node attributes
+`P`: Plot based on the Node attributes
 
-`--verify_homophily`: Test for homophily in the graph
+`--verify_homophily`: Test for homophily in the graph, result shown in the terminal
 
-`--verify_balanced_graph`: Check if the graph is balanced
+`--verify_balanced_graph`: Check if the graph is balanced, result shown in the terminal
 
 `--output out_graph_file.gml`: Save modified graph to a new file
