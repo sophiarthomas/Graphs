@@ -12,4 +12,4 @@ for f in files_and_dirs:
     if f.endswith('.py') and not f.endswith('Assignment_3_Grading.py'):
         print("---------------------")
         print(f)
-        subprocess.run(["python3", f,  "traffic.gml", "20", "0", "3", "--plot"])
+        subprocess.run(["python", f,  "traffic.gml", "20", "0", "3", "--plot"])
