@@ -3,17 +3,9 @@ import os
 import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
+import math 
+import copy 
 
-"""
---plot 
---interactive
-
-## --interactive
-
-Requests that the program show the output of every round graph. 
-A round is defined as obtaining the preference SELLER graph, 
-compute the CONSTRICTED sets via matching, and UPDATE the valuation.
-"""
 def load_graph(gml_file):
     """Load a bipartite graph from a GML file."""
     if not os.path.exists(gml_file):
@@ -21,108 +13,149 @@ def load_graph(gml_file):
     G = nx.read_gml(gml_file)
     return G
 
-def compute_preferred_seller_graph(G):
-    """Compute the preferred-seller graph based on valuations and prices."""
-    preferred_graph = nx.Graph()
-    buyers = [n for n in G.nodes if G.nodes[n]['bipartite'] == 1]
-    sellers = [n for n in G.nodes if G.nodes[n]['bipartite'] == 0]
-    
-    for buyer in buyers:
-        best_seller = None
-        best_value = -float('inf')
-        
-        for seller in sellers:
-            if G.has_edge(seller, buyer):
-                valuation = G[seller][buyer]['valuation']
-                price = G.nodes[seller]['price']
+def interactive_mode(G):
+    from networkx.algorithms import bipartite
+
+    def compute_preference_graph(G, prices):
+        pref_G = nx.Graph()
+        preferred_sellers = {}
+
+        for buyer in buyers:
+            max_payoff = float('-inf')
+            best_sellers = []
+
+            for neighbor in G.neighbors(buyer):
+                seller = neighbor
+                valuation = G[seller][buyer].get('valuation', 0)
+                price = prices.get(seller, 0)
                 payoff = valuation - price
-                
-                if payoff > best_value:
-                    best_value = payoff
-                    best_seller = seller
+
+                G[seller][buyer]['payoff'] = payoff  
+
+                if payoff > max_payoff:
+                    max_payoff = payoff
+                    best_sellers = [seller]
+                elif payoff == max_payoff:
+                    best_sellers.append(seller)
+
+            # Only include preferred edges in preference graph
+            preferred_sellers[buyer] = best_sellers
+            for seller in best_sellers:
+                valuation = G[seller][buyer].get('valuation', 0)
+                payoff = G[seller][buyer].get('payoff', 0)
+                pref_G.add_edge(seller, buyer, valuation=valuation, payoff=payoff)
+
+        return pref_G, preferred_sellers
+
+    def find_constricted_set(preferred_sellers):
+        from itertools import combinations
+
+        buyers = list(preferred_sellers.keys())
+
         
-        if best_seller is not None:
-            preferred_graph.add_edge(best_seller, buyer)
-    
-    return preferred_graph
+        for r in range(2, len(buyers) + 1):
+            for subset in combinations(buyers, r):
+                seller_set = set()
+                for b in subset:
+                    seller_set.update(preferred_sellers[b])
 
-def interactive_market_clearing(G):
-    round_counter = 1
-    while True:
-        print(f"\n=== Round {round_counter} ===")
+                if len(seller_set) < len(subset):
+                    return list(subset), list(seller_set)
+              
+        return [], []
 
-        # 1. Build preferred seller graph
-        preferred_graph = compute_preferred_seller_graph(G)
 
-        # 2. Compute matching
-        buyers = [n for n in G.nodes if G.nodes[n]['bipartite'] == 1]
-        sellers = [n for n in G.nodes if G.nodes[n]['bipartite'] == 0]
-        matching = nx.bipartite.maximum_matching(preferred_graph, top_nodes=buyers)
-        matched_buyers = set(matching.keys()) & set(buyers)
-        all_buyers = set(buyers)
+    def update_prices(prices, constricted, increment=1):
+        for s in constricted[1]:
+            prices[s] += increment
+        return prices
 
-        # 3. Check for perfect matching
-        if matched_buyers == all_buyers:
-            print("Market cleared with perfect matching!")
-            plot_matching(preferred_graph, matching, title=f"Perfect Matching - Round {round_counter}")
+    sellers = [n for n in G.nodes if G.nodes[n].get('bipartite') == 0]
+    buyers = [n for n in G.nodes if G.nodes[n].get('bipartite') == 1]
+    prices = {s: G.nodes[s].get('price', 0) for s in sellers}
+
+    rounds = []
+    round_num = 0
+    perfect_matching = False
+
+    while not perfect_matching:  
+        pref_G, preferred_sellers = compute_preference_graph(G, prices)
+        matching = nx.bipartite.maximum_matching(pref_G, top_nodes=preferred_sellers)
+        constricted = find_constricted_set(preferred_sellers)        
+
+        rounds.append((copy.deepcopy(pref_G), copy.deepcopy(prices),
+                       copy.deepcopy(matching), copy.deepcopy(preferred_sellers), constricted))
+        prices = update_prices(prices, constricted)
+        round_num += 1
+
+        if constricted == ([], []): 
+            perfect_matching = True
+            print("Perfect Matching Found!")
             break
 
-        # 4. Identify constricted sets
-        unmatched_buyers = all_buyers - matched_buyers
-        constricted_sellers = set()
-        for buyer in unmatched_buyers:
-            neighbors = list(preferred_graph.neighbors(buyer))
-            constricted_sellers.update(neighbors)
+    # Rounds
+    fig, axes = plt.subplots(1, len(rounds), figsize=(6 * len(rounds), 6))
+    if len(rounds) == 1:
+        axes = [axes]
 
-        # 5. Visualize phases
-        print("1: Preferred Seller Graph")
-        plot_graph_with_highlights(preferred_graph, highlight_nodes=unmatched_buyers, title=f"Preferred Seller Graph - Round {round_counter}")
+    for i, (pref_G, round_prices, matching, preferred_sellers, constricted) in enumerate(rounds):
+        pos = nx.bipartite_layout(pref_G, sellers)
 
-        print("2: Matching")
-        plot_matching(preferred_graph, matching, title=f"Matching - Round {round_counter}")
+        edge_labels = {(u, v): f"{d['valuation']}→{d['payoff']}"
+                       for u, v, d in pref_G.edges(data=True)}
 
-        print("3: Constricted Set")
-        plot_graph_with_highlights(
-            preferred_graph,
-            highlight_nodes=constricted_sellers,
-            node_color='orange',
-            title=f"Constricted Set - Sellers to Update - Round {round_counter}"
-        )
+        node_labels = {
+            n: f"{n}\nP:{round_prices.get(n, '')}" if n in sellers else str(n)
+            for n in pref_G.nodes
+        }
 
-        # 6. Update prices of sellers in constricted set
-        for seller in constricted_sellers:
-            G.nodes[seller]['price'] += 1
-            print(f"Updated price of seller {seller} to {G.nodes[seller]['price']}")
+        # Draw the graph
+        nx.draw(pref_G, pos, ax=axes[i], with_labels=True, labels=node_labels,
+                node_color=['lightcoral' if n in sellers else 'skyblue' for n in pref_G.nodes],
+                node_size=2000, font_size=9, edge_color='gray')
 
-        input("Press Enter to continue to the next round...")
-        round_counter += 1
+        for (u, v), label in edge_labels.items():
+            x0, y0 = pos[u]
+            x1, y1 = pos[v]
+            mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+            axes[i].text(mx, my, label, fontsize=8, color='black', ha='center')
 
-def plot_graph_with_highlights(G, highlight_nodes=None, node_color='red', title=""):
-    pos = nx.spring_layout(G, seed=42)
-    node_colors = ['lightblue' if n not in highlight_nodes else node_color for n in G.nodes]
+        axes[i].set_title(f"Round {i+1}")
+        axes[i].axis('off')
 
-    plt.figure(figsize=(8, 6))
-    nx.draw(G, pos, with_labels=True, node_color=node_colors, edge_color='gray', node_size=2000)
-    plt.title(title)
-    plt.show()
+        # Print details
+        print(f"\n === Round {i+1} ===")
+        print("Current Prices:")
+        for s in sellers:
+            print(f"  Seller {s}: Price = {round_prices[s]}")
 
-def plot_matching(G, matching, title="Matching"):
-    pos = nx.spring_layout(G, seed=42)
-    matching_edges = [(u, v) for u, v in matching.items() if (u, v) in G.edges or (v, u) in G.edges]
+        print("Preferred Sellers (per buyer):")
+        for b in buyers:
+            preferred = preferred_sellers.get(b, [])
+            print(f"  Buyer {b}: {preferred}  val: {[G[s][b]['valuation'] for s in preferred]}")
 
-    plt.figure(figsize=(8, 6))
-    nx.draw(G, pos, with_labels=True, node_color='lightgreen', edge_color='gray', node_size=2000)
-    nx.draw_networkx_edges(G, pos, edgelist=matching_edges, edge_color='blue', width=2)
-    plt.title(title)
+        
+        if  constricted[0] == []:
+            print("\nWe have found a Perfect Matching!")
+        else:
+            print("Constricted Set:")
+            print(" ", constricted)
+            print("Updated Prices After Matching:")
+            updated_prices = {s: round_prices[s] for s in sellers}
+            matched_sellers = set(u for u, v in matching.items() if u in sellers)
+            for s in updated_prices:
+                if s in find_constricted_set(preferred_sellers)[1]:
+                    updated_prices[s] += 1
+                print(f"  Seller {s}: {updated_prices[s]}")
+
+    plt.tight_layout()
     plt.show()
 
 def plot_graph(G):
     from networkx.algorithms import bipartite
 
-    buyers = [n for n in G.nodes if G.nodes[n].get('bipartite') == 1]
     sellers = [n for n in G.nodes if G.nodes[n].get('bipartite') == 0]
 
-    # Assign colors by type
     node_colors = []
     node_labels = {}
     for node in G.nodes:
@@ -135,18 +168,34 @@ def plot_graph(G):
 
     pos = nx.bipartite_layout(G, sellers)
 
-    edge_labels = {(u, v): G[u][v].get('valuation', '') for u, v in G.edges}
-
     plt.figure(figsize=(10, 6))
+    ax = plt.gca()
     nx.draw(G, pos, with_labels=True, labels=node_labels,
             node_color=node_colors, edge_color='gray', node_size=2000, font_size=10)
 
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='black')
+    for i, (u, v) in enumerate(G.edges()):
+        valuation = G[u][v].get('valuation', '')
+        x0, y0 = pos[u]
+        x1, y1 = pos[v]
+        mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+
+        offset = 0.02 * ((-1) ** i) * (i // 2 + 1)
+        label_x = mx + offset
+        label_y = my
+
+        angle = math.degrees(math.atan2(y1 - y0, x1 - x0))
+        if angle > 90 or angle < -90:
+            angle += 180  # Keep label upright
+
+        ax.text(label_x, label_y, str(valuation),
+                fontsize=9, color='black', ha='center', va='center',
+                rotation=angle, rotation_mode='anchor')
 
     plt.title("Bipartite Market Graph with Valuations and Prices")
     plt.axis('off')
+    plt.tight_layout()
     plt.show()
-
+    
 
 def main(): 
     """Parse command-line arguments and execute graph analysis."""
@@ -166,7 +215,7 @@ def main():
         print("Graph plotted.")
 
     if args.interactive:
-        interactive_market_clearing(G)
+        interactive_mode(G)
 
 
 if __name__ == '__main__': 
