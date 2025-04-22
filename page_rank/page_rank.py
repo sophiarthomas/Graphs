@@ -3,9 +3,8 @@ import os
 import sys
 import networkx as nx
 import matplotlib.pyplot as plt
-from scrapy.crawler import CrawlerProcess, CrawlerRunner
+from scrapy.crawler import CrawlerRunner
 import scrapy
-import scipy
 from twisted.internet import reactor, defer
 import threading 
 
@@ -17,24 +16,18 @@ visited = set()
 class LinkSpider(scrapy.Spider):
   name = 'link_spider'
   custom_settings = {
-    # 'FEEDS': {
-    #   'output.gml': {
-    #     'format': 'gml',
-    #     'overwrite': True
-    #   }
-    # },
     'LOG_ENABLED': False,
     'DOWNLOAD_DELAY': 2.0,
     'USER_AGENT': 'CECS427 PageRank Bot',
     'COOKIES_ENABLED': False,
-    'ROBOTSTXT_OBEY':False
+    'ROBOTSTXT_OBEY':False,
+    # 'REQUEST_FINGERPRINTER_IMPLEMENTATION': 'scrapy2',
   }
   def __init__(self, max_nodes=100, domain=None, start_urls=None, **kwargs):
     super().__init__(**kwargs)
     self.max_nodes = max_nodes
     self.allowed_domain = domain
     self.start_urls = start_urls or []
-    # self.visited = set()
 
   def parse(self, response): 
     current_url = response.url
@@ -72,6 +65,7 @@ def run_crawler(crawler_file):
     def crawl_all():
       tasks = []
       for seed in seeds: 
+        print(f"[INFO] Crawling {seed}")
         task = runner.crawl(LinkSpider, max_nodes=max_nodes, domain=domain, start_urls=[seed])
         tasks.append(task)
 
@@ -122,7 +116,6 @@ def compute_pagerank(graph, max_nodes, tol=1.0e-6, alpha=0.85):
 
   return pr
   
-
 def plot_loglog(graph):
   """
   descrip: plot the log-log plot of the degree distribution of a directed graph using Matplotlib
