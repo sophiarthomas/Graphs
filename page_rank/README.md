@@ -1,8 +1,29 @@
 # PageRank Web Crawler & Graph Analyzer
 
-This project implements a web crawler and graph analysis pipeline using **Scrapy** and **NetworkX**. It crawls webpages starting from a list of seed URLs, builds a directed graph of the links, computes PageRank, and optionally visualizes the graph’s degree distribution.
+Use `scrapy` to collect page relationship informatoin and build a page rank dataset \
 
+Crawls webpages starting from a list of seed URLs, builds a directed graph of the links, computes PageRank, and visualizes the graph’s degree distribution.
 
+# Usage
+1. Install scrapy 
+```
+pip install scrapy 
+
+```
+2. Create `crawler.txt` file with the format: 
+```
+max_nodes 
+domain
+url
+url
+...
+url
+
+```
+3.  Run command inside `page_rank\`
+```
+python ./page_rank.py --crawler crawler.txt --crawler_graph out_graph.gml --pagerank_values node_rank.txt --loglogplot
+```
 ## Features
 - Web Crawling:
 The crawler starts from a set of seed URLs provided in crawler.txt and collects outgoing links that belong to the same domain.

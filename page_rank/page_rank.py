@@ -7,11 +7,14 @@ from scrapy.crawler import CrawlerRunner
 import scrapy
 from twisted.internet import reactor, defer
 import threading 
+from urllib.parse import urlparse
+import re
+import math 
 
 
 crawled_graph = nx.DiGraph()
 lock = threading.Lock() # manage concurrent access to the graph
-visited = set()
+global_visited = set() 
 
 class LinkSpider(scrapy.Spider):
   name = 'link_spider'
@@ -21,34 +24,55 @@ class LinkSpider(scrapy.Spider):
     'USER_AGENT': 'CECS427 PageRank Bot',
     'COOKIES_ENABLED': False,
     'ROBOTSTXT_OBEY':False,
-    # 'REQUEST_FINGERPRINTER_IMPLEMENTATION': 'scrapy2',
+    'TELNETCONSOLE_ENABLED': False, 
   }
   def __init__(self, max_nodes=100, domain=None, start_urls=None, **kwargs):
     super().__init__(**kwargs)
     self.max_nodes = max_nodes
     self.allowed_domain = domain
     self.start_urls = start_urls or []
+    self.graph = nx.DiGraph()
+    self.visited = set()
 
   def parse(self, response): 
     current_url = response.url
-    with lock: 
-      if current_url in visited or len(crawled_graph.nodes) >= self.max_nodes:
-        return 
-      visited.add(current_url)
 
+    with lock: 
+      already_visited = current_url in global_visited
+      over_limit = len(crawled_graph.nodes) >= self.max_nodes
+      known_node = current_url in crawled_graph.nodes
+
+      if over_limit and not known_node: 
+        return 
+      
+      if not already_visited: 
+        self.visited.add(current_url)
+        global_visited.add(current_url)
+        crawled_graph.add_node(current_url)
+        self.graph.add_node(current_url)
 
     links = response.css('a::attr(href)').getall()
-    filtered_links = [href for href in links if self.allowed_domain in href and href != current_url and '.html' in href]
+    filtered_links = [
+      response.urljoin(href.split('#')[0]) for href in links 
+      if self.allowed_domain in href and href != current_url and  re.search(r'\.html?$', href)
+    ]
     print(f"[INFO] Found {len(filtered_links)} links on {current_url}")
+
     for href in filtered_links: 
       with lock:
-        if len(crawled_graph.nodes) >= self.max_nodes:
-          return
+        if href not in crawled_graph.nodes:
+          if len(crawled_graph.nodes) < self.max_nodes:
+            crawled_graph.add_node(href)
+          else: 
+            continue 
+        
         crawled_graph.add_edge(current_url, href)
+        self.graph.add_edge(current_url, href)
 
-      with lock:
-        if href not in visited:
+      with lock: 
+        if href not in global_visited: 
           yield scrapy.Request(href, callback=self.parse)
+       
 
 
 def run_crawler(crawler_file):
@@ -64,15 +88,52 @@ def run_crawler(crawler_file):
     @defer.inlineCallbacks
     def crawl_all():
       tasks = []
-      for seed in seeds: 
-        print(f"[INFO] Crawling {seed}")
-        task = runner.crawl(LinkSpider, max_nodes=max_nodes, domain=domain, start_urls=[seed])
-        tasks.append(task)
+      spiders = []
 
+      for seed in seeds: 
+        print(f"[INFO] Crawling Start URL => {seed}")
+        spider = LinkSpider(max_nodes=max_nodes, domain=domain, start_urls=[seed])
+        spiders.append(spider)
+        tasks.append(runner.crawl(LinkSpider, max_nodes=max_nodes, domain=domain, start_urls=[seed]))
+
+      
       yield defer.DeferredList(tasks)
+
+      for spider in spiders: 
+        crawled_graph.update(spider.graph.nodes(data=True))
+        crawled_graph.update(spider.graph.edges(data=True))
+      
+      print(f"[INFO] Spider Crawled {len(crawled_graph.nodes)} nodes and {len(crawled_graph.edges)} edges")
+
+      yield crawl_nodes_add_edges()
+
       reactor.stop()
 
-    crawl_all()
+    @defer.inlineCallbacks
+    def crawl_nodes_add_edges(): 
+      known_nodes =  list(crawled_graph.nodes)
+      tasks = []
+      spiders = []
+      
+      for url in known_nodes: 
+        if url not in seeds:
+          # print(f"[INFO] Crawling node {url}")
+          spider = LinkSpider(max_nodes=max_nodes, domain=domain, start_urls=[url])
+          spiders.append(spider)
+          tasks.append(runner.crawl(LinkSpider, max_nodes=max_nodes, domain=domain, start_urls=[url]))
+
+
+      
+      yield defer.DeferredList(tasks)
+
+      for spider in spiders: 
+        for u, v in spider.graph.edges: 
+          if u in crawled_graph and v in crawled_graph: 
+            crawled_graph.add_edge(u, v)
+
+          
+
+    reactor.callWhenRunning(crawl_all)
     reactor.run()
 
     print(f"[DONE] Graph has {len(crawled_graph.nodes)} nodes and {len(crawled_graph.edges)} edges")
@@ -84,7 +145,7 @@ def build_graph_from_gml(path):
   param: .gml file
   return: directed graph
   """
-  return nx.read_gml(path, label='id')
+  return nx.read_gml(path, label='label')
 
 def compute_pagerank(graph, max_nodes, tol=1.0e-6, alpha=0.85): 
   """
@@ -141,7 +202,7 @@ def plot_loglog(graph):
 def plot_graph(graph, label_attr='label'):
   print(f"[INFO] Ploting graph with {len(graph.nodes)} nodes and {len(graph.edges)} edges")
   plt.figure(figsize=(12, 8))
-  pos = nx.spring_layout(graph, k=0.15, iterations=20)
+  pos = nx.spring_layout(graph, k=0.15)
   nx.draw_networkx_nodes(graph, pos, node_size=50, node_color='blue', alpha=0.6)
   nx.draw_networkx_edges(graph, pos, alpha=0.1)
 
@@ -197,8 +258,3 @@ def main():
 
 if __name__ == "__main__": 
   main() 
-        
-
-    
-
-  
