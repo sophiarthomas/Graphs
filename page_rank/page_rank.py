@@ -54,7 +54,7 @@ class LinkSpider(scrapy.Spider):
     links = response.css('a::attr(href)').getall()
     filtered_links = [
       response.urljoin(href.split('#')[0]) for href in links 
-      if self.allowed_domain in href and href != current_url and  re.search(r'\.html?$', href)
+      if self.allowed_domain in href and href != current_url and re.search(r'\.html?$', href)
     ]
     print(f"[INFO] Found {len(filtered_links)} links on {current_url}")
 

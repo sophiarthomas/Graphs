@@ -10,7 +10,14 @@
       "request": "launch",
       "program": "${file}",
       "console": "integratedTerminal",
-      "args": ["simple_graph.gml", "--plot", "N", "--verify_homophily"]
+      "args": [
+        "/Users/sophiathomas/Development/Graphs/dynamic_population/cascadebehaviour.gml",
+        "--action",
+        "cascade",
+        "--initiator",
+        "2,5,11,16",
+        "--interactive"
+      ]
     }
   ]
 }
