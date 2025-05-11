@@ -13,10 +13,17 @@
       "args": [
         "/Users/sophiathomas/Development/Graphs/dynamic_population/cascadebehaviour.gml",
         "--action",
-        "cascade",
+        "covid",
         "--initiator",
         "2,5,11,16",
-        "--interactive"
+        "--interactive",
+        "--probability_of_infection",
+        "0.4",
+        "--probability_of_death",
+        "0.1",
+        "--lifespan",
+        "5",
+        "--plot"
       ]
     }
   ]

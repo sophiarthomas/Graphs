@@ -1,22 +1,16 @@
 import argparse
 import os
-import sys
 import random
 import networkx as nx
 import matplotlib.pyplot as plt
-
-"""
-Upddate: 
-- simulate_cascade works
-- simulate_covid needs to be redone completely
-- plot covid redone
-"""
+import time
 
 # Node status
 SUSCEPTIBLE = "S"
 INFECTED = "I"
 RECOVERED = "R"
 DEAD = "D"
+SHELTER = "SH"
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simulate cascade or COVID-19 spread on a graph.")
@@ -54,6 +48,7 @@ def simulate_cascade(G, initiators, threshold, interactive):
     changed = True
     round = 0
     prev_active = set(active)
+    draw_graph(G, node_color_by_state(G), title=f"Round {round} - Initial State")
     while changed: 
         changed = False
         for n in G.nodes: 
@@ -71,8 +66,60 @@ def simulate_cascade(G, initiators, threshold, interactive):
     draw_graph(G, node_color_by_state(G), title=f"Round {round} - Final State")
         
 
-def simulate_covid(G, initiators, p_infect, p_death, lifespan, shelter, vaccination, interactive, plot):
-    pass
+def simulate_covid(G, initiators, p_infect, p_death, lifespan, shelter=0, vaccination=0, interactive=False, plot=False):
+    new_infections_per_step = []
+
+    # Initialize all nodes to susceptible
+    for node in G.nodes:
+        G.nodes[node]['state'] = SUSCEPTIBLE
+
+    # Set initiators to infected
+    for node in initiators:
+        G.nodes[node]['state'] = INFECTED
+    
+    draw_graph(G, node_color_by_state(G), title="Initial State")
+
+    for  step in range(1, lifespan+1):
+        new_infections = 0
+        next_states = {}
+
+        # Determine state updates
+        for node in G.nodes:
+            state = G.nodes[node]['state'] # state of the current node
+            if state == INFECTED: # only checking infected nodes and thier neighbors 
+                for neighbor in G.neighbors(node):
+                    if G.nodes[neighbor]['state'] == SUSCEPTIBLE or G.nodes[neighbor]['state'] == RECOVERED:
+                        if random.random() < p_infect:
+                            next_states[neighbor] = INFECTED
+                            new_infections += 1
+                # Recovery (ignoring death for now; you can add that logic later)
+                next_states[node] = RECOVERED
+
+        # Apply state updates
+        for node, new_state in next_states.items():
+            if new_state != RECOVERED: 
+                G.nodes[node]['state'] = new_state
+            
+
+        new_infections_per_step.append(new_infections)
+
+        # if interactive:
+        #         draw_graph(G, node_color_by_state(G), title=f"Step {step}")
+
+        # Apply recovery state updates 
+        for node, new_state in next_states.items():
+            if new_state == RECOVERED: 
+                G.nodes[node]['state'] = new_state
+        
+
+        
+
+    if plot:
+        plot_infection_curve(new_infections_per_step, lifespan)
+    if interactive:
+        draw_graph(G, node_color_by_state(G), title=f"Step {step}")
+
+
                 
 def draw_graph(G, color_map, title):
     pos = nx.spring_layout(G, seed=42)
@@ -88,17 +135,19 @@ def node_color_by_state(G):
         SUSCEPTIBLE: 'yellow',
         INFECTED: 'red',
         RECOVERED: 'green',
-        DEAD: 'black'
+        DEAD: 'black',
+        SHELTER: 'blue'
     }
     return [colors[G.nodes[n]['state']] for n in G.nodes]
 
-def plot_infection_curve(infections):
-    plt.figure()
-    plt.plot(range(len(infections)), infections, marker='o')
-    plt.title("Daily New Infections")
-    plt.xlabel("Days")
-    plt.ylabel("New Infections")
-    plt.grid(True)
+def plot_infection_curve(infections, lifespan):
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(lifespan), infections, marker='o')
+    plt.xlabel('Day')
+    plt.ylabel('New Infections')
+    plt.title('Covid-19 Spread Over Time (SIR Model)')
+    plt.grid()
+    plt.tight_layout()
     plt.show()
         
 
@@ -120,8 +169,6 @@ def main():
                                     args.lifespan, 
                                     args.shelter, args.vaccination, args.interactive
                                     , args.plot)
-        if args.plot: 
-            plot_infection_curve(infections)
 
 def test_main():
     args = parse_args()
