@@ -53,6 +53,7 @@ def simulate_cascade(G, initiators, threshold, interactive, action):
     @param initiators: The initial nodes to start the cascade
     @param threshold: The threshold for a node to become active
     @param interactive: If True, show the graph at each step
+    @param action: The action to perform (cascade or covid)
     """
     active = set(initiators)
     for n in G.nodes: 
@@ -60,25 +61,36 @@ def simulate_cascade(G, initiators, threshold, interactive, action):
     for n in active: 
         G.nodes[n]['state'] = 'active'
     
-    changed = True
     round = 0
-    prev_active = set(active)
-    draw_graph(G, action, node_color_by_state(G), title=f"Round {round} - Initial State")
-    while changed: 
-        changed = False
+    # prev_active = set(active)
+    if interactive:
+        draw_graph(G, action, node_color_by_state(G, action), title=f"Round {round} - Initial State")
+
+    while True: 
+        newley_activated = set()
+
         for n in G.nodes: 
             if G.nodes[n]['state'] == 'inactive': 
                 neighbors = list(G.neighbors(n))
-                active_neighbors = sum(G.nodes[n]['state'] == 'active' for n in neighbors)
-                if neighbors and active_neighbors / len(neighbors) >= threshold: 
-                    G.nodes[n]['state'] = 'active'
-                    active.add(n)   
-                    changed = True
-        if interactive and (len(active) != len(prev_active)): # Show the graph at each Round
-            prev_active = active.copy()
-            round += 1
+                if not neighbors: 
+                    continue
+                active_neighbors = sum(G.nodes[neighbor]['state'] == 'active' for neighbor in neighbors)
+                if active_neighbors / len(neighbors) >= threshold: 
+                    newley_activated.add(n)
+        if not newley_activated:
+            break
+
+        for n in newley_activated: 
+            G.nodes[n]['state'] = 'active'
+            active.add(n)
+
+        round += 1
+
+
+        if interactive: # Show the graph at each Round
             draw_graph(G, action, node_color_by_state(G, action), title=f"Round {round}")
-    draw_graph(G, action, node_color_by_state(G, action), title=f"Round {round} - Final State")
+    if not interactive:       
+        draw_graph(G, action, node_color_by_state(G, action), title=f"Round {round} - Final State")
         
 
 def simulate_covid(G, initiators, p_infect, p_death, lifespan, action, shelter=0, vaccination=0, interactive=False, plot=False):
