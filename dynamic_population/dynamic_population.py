@@ -5,12 +5,27 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import time
 
+
 # Node status
-SUSCEPTIBLE = "S"
-INFECTED = "I"
-RECOVERED = "R"
-DEAD = "D"
-SHELTER = "SH"
+SUSCEPTIBLE = "SUSCEPTIBLE"
+INFECTED = "INFECTED"
+RECOVERED = "RECOVERED"
+DEAD = "DEAD"
+SHEL_VAC = "SHELTER/VACCINATED"
+
+colors = {
+    'cascade': {
+        'inactive': '#93d286',
+        'active': '#ca2f2f',
+    },
+    'covid': { 
+        SUSCEPTIBLE: '#f7dc6f', #yellow
+        INFECTED: '#ca2f2f', #red
+        RECOVERED: '#93d286', #green
+        DEAD: '#71173d', #dark red
+        SHEL_VAC: '#ccd1d1' #gray
+        }
+    }
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simulate cascade or COVID-19 spread on a graph.")
@@ -32,7 +47,7 @@ def load_graph(path):
         raise FileNotFoundError(f"Graph file {path} does not exist.")
     return nx.read_gml(path)
 
-def simulate_cascade(G, initiators, threshold, interactive):
+def simulate_cascade(G, initiators, threshold, interactive, action):
     """
     @param G: The graph to simulate 
     @param initiators: The initial nodes to start the cascade
@@ -48,7 +63,7 @@ def simulate_cascade(G, initiators, threshold, interactive):
     changed = True
     round = 0
     prev_active = set(active)
-    draw_graph(G, node_color_by_state(G), title=f"Round {round} - Initial State")
+    draw_graph(G, action, node_color_by_state(G), title=f"Round {round} - Initial State")
     while changed: 
         changed = False
         for n in G.nodes: 
@@ -62,11 +77,11 @@ def simulate_cascade(G, initiators, threshold, interactive):
         if interactive and (len(active) != len(prev_active)): # Show the graph at each Round
             prev_active = active.copy()
             round += 1
-            draw_graph(G, node_color_by_state(G), title=f"Round {round}")
-    draw_graph(G, node_color_by_state(G), title=f"Round {round} - Final State")
+            draw_graph(G, action, node_color_by_state(G, action), title=f"Round {round}")
+    draw_graph(G, action, node_color_by_state(G, action), title=f"Round {round} - Final State")
         
 
-def simulate_covid(G, initiators, p_infect, p_death, lifespan, shelter=0, vaccination=0, interactive=False, plot=False):
+def simulate_covid(G, initiators, p_infect, p_death, lifespan, action, shelter=0, vaccination=0, interactive=False, plot=False):
     new_infections_per_step = []
 
     # Initialize all nodes to susceptible
@@ -76,8 +91,12 @@ def simulate_covid(G, initiators, p_infect, p_death, lifespan, shelter=0, vaccin
     # Set initiators to infected
     for node in initiators:
         G.nodes[node]['state'] = INFECTED
+
+    # Apply vaccination and shelter
+    apply_shelter_and_vaccination(G, shelter, vaccination, initiators)
     
-    draw_graph(G, node_color_by_state(G), title="Initial State")
+    if interactive: 
+        draw_graph(G, action, node_color_by_state(G, action), title="Initial State")
 
     for  step in range(1, lifespan+1):
         new_infections = 0
@@ -92,8 +111,11 @@ def simulate_covid(G, initiators, p_infect, p_death, lifespan, shelter=0, vaccin
                         if random.random() < p_infect:
                             next_states[neighbor] = INFECTED
                             new_infections += 1
-                # Recovery (ignoring death for now; you can add that logic later)
-                next_states[node] = RECOVERED
+                # Death or Recovery
+                if random.random() < p_death: 
+                    next_states[node] = DEAD
+                else: 
+                    next_states[node] = RECOVERED
 
         # Apply state updates
         for node, new_state in next_states.items():
@@ -104,41 +126,54 @@ def simulate_covid(G, initiators, p_infect, p_death, lifespan, shelter=0, vaccin
         new_infections_per_step.append(new_infections)
 
         # if interactive:
-        #         draw_graph(G, node_color_by_state(G), title=f"Step {step}")
+        #         draw_graph(G, action, node_color_by_state(G, action), title=f"Step {step}")
 
         # Apply recovery state updates 
         for node, new_state in next_states.items():
             if new_state == RECOVERED: 
                 G.nodes[node]['state'] = new_state
-        
-
-        
-
+    
     if plot:
         plot_infection_curve(new_infections_per_step, lifespan)
     if interactive:
-        draw_graph(G, node_color_by_state(G), title=f"Step {step}")
+        draw_graph(G, action, node_color_by_state(G, action), title=f"Step {step}")
 
+def apply_shelter_and_vaccination(G, shelter, vaccination, initiators): 
+    nodes = list(G.nodes)
+    # Apply shelter
+    shelter_count = int(len(nodes) * shelter)
+    shelter_nodes = random.sample([n for n in nodes if n not in initiators and G.nodes[n]['state'] != RECOVERED], shelter_count)
+    for node in shelter_nodes: 
+        G.nodes[node]['state'] = SHEL_VAC
 
-                
-def draw_graph(G, color_map, title):
+    # Vaccination (nodes become recovered)
+    vax_count = int(len(nodes) * vaccination)
+    vax_nodes = random.sample([n for n in nodes if n not in initiators], vax_count)
+    for node in vax_nodes:
+        G.nodes[node]['state'] = SHEL_VAC
+
+def draw_graph(G, action, color_map, title):
     pos = nx.spring_layout(G, seed=42)
     plt.figure()
     plt.title(title)
     nx.draw(G, pos=pos, with_labels=True, node_color=color_map, node_size=500)
+    plot_lengend(action)
     plt.show()
 
-def node_color_by_state(G):
-    colors = {
-        'inactive': 'green', 
-        'active': 'red', 
-        SUSCEPTIBLE: 'yellow',
-        INFECTED: 'red',
-        RECOVERED: 'green',
-        DEAD: 'black',
-        SHELTER: 'blue'
-    }
-    return [colors[G.nodes[n]['state']] for n in G.nodes]
+def node_color_by_state(G, action):
+    state_colors = colors[action]
+    return [state_colors.get(G.nodes[n]['state']) for n in G.nodes]
+
+def plot_lengend(action): 
+    if action == "cascade":
+        state_colors = colors['cascade']
+    else:
+        state_colors = colors['covid']
+
+    for state, color in state_colors.items():
+        plt.scatter([], [], color=color, label=state)
+    plt.legend()
+    plt.show()
 
 def plot_infection_curve(infections, lifespan):
     plt.figure(figsize=(10, 6))
@@ -162,18 +197,22 @@ def main():
     initiators = args.initiator.split(",")
 
     if args.action == "cascade": 
-        simulate_cascade(G, initiators, args.threshold, args.interactive)
+        simulate_cascade(G, initiators, args.threshold, args.interactive, args.action)
     elif args.action == "covid": 
         infections = simulate_covid(G, initiators, args.probability_of_infection, 
                                     args.probability_of_death, 
-                                    args.lifespan, 
+                                    args.lifespan, args.action,
                                     args.shelter, args.vaccination, args.interactive
                                     , args.plot)
 
 def test_main():
     args = parse_args()
     G = load_graph(args.graph_file)
-    draw_graph(G, node_color_by_state(G), title="Initial Graph")
+    action = 'covid'
+    # state
+    for n in G.nodes: 
+        G.nodes[n]['state'] = 'inactive'
+    draw_graph(G, action, node_color_by_state(G, action), title="Initial Graph")
 
 if __name__ == "__main__": 
     main() 
